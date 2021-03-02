@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+
+# This script is for compiling a pdf menu for Tlo Wines
+#
+# First, name the pages starting with the page number like:
+#   1 Tlo QR By the glass Menu-March.pdf
+#   1.1 QR Menu Wine Club Week.pdf
+#   2 Tlo QR Bottle Menu (Rosé_Whites).pdf
+#   3 Tlo QR Bottle Menu (light reds).pdf
+#   4 Tlo QR Bottle Menu (heavy reds).pdf
+#   5 Tlo QR Bottle Menu (red blends_dessert).pdf
+#   7 Tlo QR Menu Merch.pdf
+#
+# Then, simple run `make_menu` in that directory and answer the prompts
+
+set -e # exit on error
+
+############### Formatting ###############
+
+tty_escape() { printf "\033[%sm" "$1"; }
+tty_mkbold() { tty_escape "1;$1"; }
+tty_blue="$(tty_mkbold 34)"
+tty_yellow="$(tty_mkbold 33)"
+tty_red="$(tty_mkbold 31)"
+tty_bold="$(tty_mkbold 39)"
+tty_reset="$(tty_escape 0)"
+
+confirm() {
+  read -r -p "${tty_blue}${1:-Are you sure?} ${tty_bold}[Y/n]${tty_reset} " response
+  case "$response" in
+    [nN][oO]|[nN])
+      false
+      ;;
+    *)
+      true
+      ;;
+  esac
+}
+
+abort() {
+  echo "${tty_red}Error:${tty_reset} ${1:-Exiting}"
+  exit 1
+}
+
+############### Checks ###############
+
+secrets_file="$(dirname "$0")/secrets.sh"
+if [[ -f "$secrets_file" ]]; then
+  source "$secrets_file"
+  if [[ -z ${TLOVID_LBCACHE_URL-} ]] || [[ -z ${TLOVID_BUCKET_URL-} ]]; then
+    abort "${tty_yellow}${secrets_file}${tty_reset} is missing ${tty_yellow}TLOVID_BUCKET_URL${tty_reset} and/or ${tty_yellow}TLOVID_LBCACHE_URL${tty_reset}"
+  fi
+else
+  abort "missing file ${tty_yellow}${secrets_file}${tty_reset}"
+fi
+
+if ! command -v qpdf &> /dev/null; then
+  echo "${tty_bold}The ${tty_yellow}qpdf${tty_reset}${tty_bold} command could not be found${tty_reset}"
+  if confirm "Install ${tty_yellow}qpdf${tty_reset}${tty_blue} with homebrew?"; then
+    brew install qpdf
+    echo
+  else
+    abort "qpdf missing"
+  fi
+fi
+
+if ! command -v exiftool &> /dev/null; then
+  echo "${tty_bold}The ${tty_yellow}exiftool${tty_reset}${tty_bold} command could not be found${tty_reset}"
+  if confirm "Install ${tty_yellow}exiftool${tty_reset}${tty_blue} with homebrew?"; then
+    brew install exiftool
+    echo
+  else
+    abort "exiftool missing"
+  fi
+fi
+
+if [[ -f tlo-menu.pdf ]]; then
+  echo "${tty_bold}Warning: tlo-menu.pdf already exists${tty_reset}"
+  if confirm "Backup to tlo-menu.backup.pdf?"; then
+    \mv tlo-menu.pdf tlo-menu.backup.pdf
+  else
+    \rm tlo-menu.pdf
+  fi
+  echo
+fi
+
+echo "${tty_bold}The following pages will be compiled into a single pdf in this order:${tty_reset}"
+ls -1 | grep '^[0-9]' | sort
+if ! confirm "Continue?"; then
+  echo "${tty_bold}Exiting${tty_reset}"
+  exit 0
+fi
+
+title="Tlo Wines $(date +"%B %Y") Menu"
+if ! confirm "Set the title to \"${title}\"?"; then
+  read -r -p "Set title> " response
+  title="$response"
+fi
+
+############### Compile PDF ###############
+
+# find:  Get all pdf files starting with a number, delineated with `\0`
+# sort:  Sort them respecting the `\0`
+# xargs: Pass the pages to qpdf respecting the `\0`
+# qpdf:  Strip out all unnecessary data, and compile everything into a single pdf
+find . -name "[0-9]*.pdf" -type f -print0 | sort -z | xargs -r -0 -J{} qpdf --linearize --empty --pages {} -- tlo-menu.pdf
+
+# Add the specified title attribute to the pdf
+exiftool -overwrite_original_in_place -Title="$title" tlo-menu.pdf &> /dev/null
+
+echo "${tty_bold}Finished. Created ${tty_yellow}tlo-menu.pdf${tty_reset}"
+
+if confirm "Open GCP Pages in browser?"; then
+  open "$TLOVID_LBCACHE_URL"
+  open "$TLOVID_BUCKET_URL"
+else 
+  echo "${tty_bold}Upload here:${tty_reset}"
+  echo "$TLOVID_BUCKET_URL"
+  echo "${tty_bold}Clear cache here:${tty_reset}"
+  echo "$TLOVID_LBCACHE_URL"
+fi
+
+############### Cleanup ###############
+
+unset TLOVID_BUCKET_URL
+unset TLOVID_LBCACHE_URL
