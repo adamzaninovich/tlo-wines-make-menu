@@ -110,6 +110,10 @@ exiftool -overwrite_original_in_place -Title="$title" tlo-menu.pdf &> /dev/null
 
 echo "${tty_bold}Finished. Created ${tty_yellow}tlo-menu.pdf${tty_reset}"
 
+if confirm "Preview PDF?"; then
+  qlmanage -p tlo-menu.pdf > /dev/null 2>&1
+fi
+
 if confirm "Open GCP Pages in browser?"; then
   open "$TLOVID_LBCACHE_URL"
   open "$TLOVID_BUCKET_URL"
