@@ -11,7 +11,7 @@
 #   5 Tlo QR Bottle Menu (red blends_dessert).pdf
 #   7 Tlo QR Menu Merch.pdf
 #
-# Then, simple run `make_menu` in that directory and answer the prompts
+# Then, run `make_menu` in that directory and answer the prompts
 
 set -e # exit on error
 echo
